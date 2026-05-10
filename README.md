@@ -10,6 +10,11 @@ This project uses **my own OIDC service**:
 The backend reads OIDC discovery from:
 - `https://token-shinobi.onrender.com/.well-known/openid-configuration`
 
+
+## Demo Video
+
+- https://youtu.be/6VVbc8TFhKc?si=J-fkzjVBra3PEOir
+
 ## What This Project Does
 
 - Authenticates users using OIDC authorization-code flow
