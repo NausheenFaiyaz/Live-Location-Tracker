@@ -17,6 +17,7 @@ let cachedJwksExpiresAt = 0;
 let cachedOidcConfig = null;
 let cachedOidcConfigExpiresAt = 0;
 const processedEventIds = new Set();
+const latestLocationByUserId = new Map();
 
 async function getOidcConfig() {
   if (cachedOidcConfig && cachedOidcConfigExpiresAt > Date.now()) {
@@ -191,6 +192,16 @@ async function main() {
         processedEventIds.clear();
       }
 
+      if (data?.id) {
+        latestLocationByUserId.set(String(data.id), {
+          id: String(data.id),
+          userName: data.userName,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          updatedAt: data.updatedAt,
+        });
+      }
+
       console.log(`KafkaConsumer Data Received`, { data });
       io.emit('server:location:update', {
         id: data.id,
@@ -226,6 +237,10 @@ async function main() {
       user,
     });
 
+    socket.emit('server:users:snapshot', {
+      users: Array.from(latestLocationByUserId.values()),
+    });
+
     socket.on('client:location:update', async (locationData) => {
       const { latitude, longitude } = locationData || {};
       const validLatitude = Number.isFinite(latitude) && latitude >= -90 && latitude <= 90;
@@ -241,19 +256,38 @@ async function main() {
       );
 
       const eventId = `${user.id}-${Date.now()}`;
+      const locationEvent = {
+        eventId,
+        id: String(user.id),
+        userName: user.userName,
+        latitude,
+        longitude,
+        updatedAt: new Date().toISOString(),
+      };
+
+      latestLocationByUserId.set(String(user.id), {
+        id: locationEvent.id,
+        userName: locationEvent.userName,
+        latitude: locationEvent.latitude,
+        longitude: locationEvent.longitude,
+        updatedAt: locationEvent.updatedAt,
+      });
+
+      // Broadcast immediately so clients do not wait for Kafka consume latency.
+      io.emit('server:location:update', {
+        id: locationEvent.id,
+        userName: locationEvent.userName,
+        latitude: locationEvent.latitude,
+        longitude: locationEvent.longitude,
+        updatedAt: locationEvent.updatedAt,
+      });
+
       await kafkaProducer.send({
         topic: 'location-updates',
         messages: [
           {
             key: String(user.id),
-            value: JSON.stringify({
-              eventId,
-              id: String(user.id),
-              userName: user.userName,
-              latitude,
-              longitude,
-              updatedAt: new Date().toISOString(),
-            }),
+            value: JSON.stringify(locationEvent),
           },
         ],
       });

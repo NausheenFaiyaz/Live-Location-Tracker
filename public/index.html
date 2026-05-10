@@ -335,6 +335,7 @@
     <script>
       const accessToken = localStorage.getItem('accessToken');
       const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
+      let myUserId = storedUser?.id ? String(storedUser.id) : null;
       const isLoggedIn = localStorage.getItem('isLoggedIn');
 
       if (!accessToken || isLoggedIn !== 'true') {
@@ -591,6 +592,7 @@
 
       socket.on('server:session', (data) => {
         mySocketId = data.socketId;
+        myUserId = data?.user?.id ? String(data.user.id) : myUserId;
         currentUserName.textContent = data.user?.userName || currentUserName.textContent;
         localStorage.setItem('user', JSON.stringify(data.user));
         resolveSessionReady?.();
@@ -603,7 +605,7 @@
           return;
         }
 
-        const isSelf = id === mySocketId;
+        const isSelf = (myUserId && String(id) === myUserId) || id === mySocketId;
         upsertMarker(
           id,
           userName || (isSelf ? currentUserName.textContent : 'Unknown User'),
@@ -617,6 +619,29 @@
             updatedAt ? new Date(updatedAt) : new Date(),
             `${userName || 'Someone'} moved`,
           );
+        }
+      });
+
+      socket.on('server:users:snapshot', (data) => {
+        const users = Array.isArray(data?.users) ? data.users : [];
+        for (const user of users) {
+          const { id, userName, latitude, longitude, updatedAt } = user || {};
+          if (!id || typeof latitude !== 'number' || typeof longitude !== 'number') {
+            continue;
+          }
+
+          const isSelf = (myUserId && String(id) === myUserId) || id === mySocketId;
+          upsertMarker(
+            id,
+            userName || (isSelf ? currentUserName.textContent : 'Unknown User'),
+            latitude,
+            longitude,
+            isSelf,
+          );
+
+          if (!isSelf && updatedAt) {
+            remoteMarkerMeta.set(id, new Date(updatedAt).getTime() || Date.now());
+          }
         }
       });
 
